@@ -1,38 +1,38 @@
-import { FiTrash, FiUpload } from "react-icons/fi";
-import { Container } from "../../../components/container";
-import { DashboardHeader } from "../../../components/painelHeader";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Input } from "../../../components/input";
-import { useState, useContext } from "react";
-import type { ChangeEvent } from "react";
-import { AuthContext } from "../../../context/authContext";
-import { v4 as uuidV4 } from "uuid";
-import { storage, db } from "../../../services/firebaseConnection";
+import { FiTrash, FiUpload } from 'react-icons/fi';
+import { Container } from '../../../components/container';
+import { DashboardHeader } from '../../../components/painelHeader';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Input } from '../../../components/input';
+import { useState, useContext } from 'react';
+import type { ChangeEvent } from 'react';
+import { AuthContext } from '../../../context/authContext';
+import { v4 as uuidV4 } from 'uuid';
+import { storage, db } from '../../../services/firebaseConnection';
 import {
   ref,
   uploadBytes,
   getDownloadURL,
   deleteObject,
-} from "firebase/storage";
-import { addDoc, collection } from "firebase/firestore";
-import toast from "react-hot-toast";
+} from 'firebase/storage';
+import { addDoc, collection } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 
 const schema = z.object({
-  name: z.string().nonempty("Campo nome é obrigatório"),
-  model: z.string().nonempty("Campo modelo é obrigatório"),
-  year: z.string().nonempty("Campo Ano é obrigatório"),
-  km: z.string().nonempty("Campo KM é obrigatório"),
-  price: z.string().nonempty("Campo Preço é obrigatório"),
-  city: z.string().nonempty("Campo Cidade é obrigatório"),
+  name: z.string().nonempty('Campo nome é obrigatório'),
+  model: z.string().nonempty('Campo modelo é obrigatório'),
+  year: z.string().nonempty('Campo Ano é obrigatório'),
+  km: z.string().nonempty('Campo KM é obrigatório'),
+  price: z.string().nonempty('Campo Preço é obrigatório'),
+  city: z.string().nonempty('Campo Cidade é obrigatório'),
   whatsapp: z
     .string()
-    .min(1, "Campo WhatsApp é obrigatório")
+    .min(1, 'Campo WhatsApp é obrigatório')
     .refine((value) => /^(\d{10,12})$/.test(value), {
-      message: "WhatsApp deve conter apenas números e ter 10 ou 11 dígitos",
+      message: 'WhatsApp deve conter apenas números e ter 10 ou 11 dígitos',
     }),
-  description: z.string().nonempty("Campo descrição é obrigatório"),
+  description: z.string().nonempty('Campo descrição é obrigatório'),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -52,14 +52,14 @@ export function New() {
     reset,
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    mode: "onChange",
+    mode: 'onChange',
   });
 
   const [carImages, setCarImages] = useState<imageItemProps[]>([]);
 
   function onSubmit(data: FormData) {
     if (carImages.length === 0) {
-      toast.error("Por favor, envie pelo menos uma imagem do carro.");
+      toast.error('Por favor, envie pelo menos uma imagem do carro.');
       return;
     }
 
@@ -71,7 +71,7 @@ export function New() {
       };
     });
 
-    addDoc(collection(db, "cars"), {
+    addDoc(collection(db, 'cars'), {
       name: data.name.toUpperCase(),
       model: data.model,
       year: data.year,
@@ -88,47 +88,56 @@ export function New() {
       .then(() => {
         reset();
         setCarImages([]);
-        toast.success("Carro cadastrado com sucesso!");
+        toast.success('Carro cadastrado com sucesso!');
       })
       .catch((error) => {
-        console.error("Erro ao cadastrar carro:", error);
-        toast.error("Erro ao cadastrar carro.");
+        console.error('Erro ao cadastrar carro:', error);
+        toast.error('Erro ao cadastrar carro.');
       });
   }
 
+  // 🛠️ FUNÇÃO CORRIGIDA: Valida tipo de arquivo antes de iniciar o upload
   async function handleFile(e: ChangeEvent<HTMLInputElement>) {
     if (e.target.files && e.target.files[0]) {
       const image = e.target.files[0];
-      await handleUpload(image);
 
-      if (image.type === "image/jpeg" || image.type === "image/png") {
-      } else {
-        alert("Por favor, envie uma imagem no formato JPEG ou PNG.");
+      if (image.type !== 'image/jpeg' && image.type !== 'image/png') {
+        toast.error('Por favor, envie uma imagem no formato JPEG ou PNG.');
+        e.target.value = '';
         return;
       }
+
+      await handleUpload(image);
     }
   }
 
   async function handleUpload(image: File) {
     if (!user?.uid) {
+      toast.error('Usuário não autenticado. Faça login novamente.');
       return;
     }
-    const currentUid = user?.uid;
+    const currentUid = user.uid;
     const uidImage = uuidV4();
 
     const uploadRef = ref(storage, `images/${currentUid}/${uidImage}`);
 
-    uploadBytes(uploadRef, image).then((snapshot) => {
-      getDownloadURL(snapshot.ref).then((downLoadUrl) => {
-        const imageItem = {
-          name: uidImage,
-          uid: currentUid,
-          url: downLoadUrl,
-          previewUrl: URL.createObjectURL(image),
-        };
-        setCarImages((images) => [...images, imageItem]);
-      });
-    });
+    try {
+      const snapshot = await uploadBytes(uploadRef, image);
+      const downLoadUrl = await getDownloadURL(snapshot.ref);
+
+      const imageItem: imageItemProps = {
+        name: uidImage,
+        uid: currentUid,
+        url: downLoadUrl,
+        previewUrl: URL.createObjectURL(image),
+      };
+
+      setCarImages((images) => [...images, imageItem]);
+      toast.success('Imagem enviada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao fazer upload da imagem:', error);
+      toast.error('Falha ao fazer upload da imagem. Tente novamente.');
+    }
   }
 
   async function handleDeleteImage(item: imageItemProps) {
@@ -137,8 +146,10 @@ export function New() {
     try {
       await deleteObject(imageRef);
       setCarImages(carImages.filter((car) => car.url !== item.url));
+      toast.success('Imagem excluída!');
     } catch (error) {
-      console.error("Erro ao excluir a imagem:", error);
+      console.error('Erro ao excluir a imagem:', error);
+      toast.error('Erro ao excluir a imagem.');
     }
   }
 
@@ -261,7 +272,7 @@ export function New() {
             <textarea
               className="border-2 w-full rounded-md h-24 px-2"
               placeholder="EX: Carro em ótimo estado, com ar condicionado, direção hidráulica, etc."
-              {...register("description")}
+              {...register('description')}
               name="description"
               id="description"
             />
